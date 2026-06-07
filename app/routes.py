@@ -60,6 +60,10 @@ class AlimentResponse(BaseModel):
     nom: str
     calories_100g: float
     categorie: Optional[str]
+    proteines_g: Optional[float] = None
+    glucides_g: Optional[float] = None
+    lipides_g: Optional[float] = None
+    fibres_g: Optional[float] = None
     source_dataset: Optional[str]
     created_at: datetime
 
@@ -223,7 +227,7 @@ def create_aliment(payload: AlimentCreate, language: str = Depends(get_language)
 
 @router.get("/aliments", response_model=list[AlimentResponse])
 def list_aliments(query: Optional[str] = Query(None, description="Filtrer par nom d'aliment")):
-    sql = "SELECT id, nom, calories_100g, categorie, source_dataset, created_at FROM aliment"
+    sql = "SELECT id, nom, calories_100g, categorie, proteines_g, glucides_g, lipides_g, fibres_g, source_dataset, created_at FROM aliment"
     params = {}
     if query:
         sql += " WHERE LOWER(nom) LIKE LOWER(:query)"
@@ -374,11 +378,54 @@ def list_meals(user_id: int, language: str = Depends(get_language)):
     if not user:
         raise HTTPException(404, get_message("user_not_found", language))
 
-    journals = fetch_all(
-        "SELECT id FROM journal_repas WHERE utilisateur_id = :user_id ORDER BY date_repas DESC, id",
+    # Une seule requête (repas + lignes + aliments) au lieu d'une requête par
+    # repas (N+1), pour rester rapide même avec un historique volumineux.
+    rows = fetch_all(
+        "SELECT jr.id AS meal_id, jr.utilisateur_id, jr.date_repas, jr.type_repas, jr.notes, jr.created_at, "
+        " lr.id AS ligne_id, lr.quantite_g, lr.calories_calculees, "
+        " a.id AS aliment_id, a.nom AS aliment_nom, a.calories_100g, a.categorie, a.source_dataset "
+        "FROM journal_repas jr "
+        "LEFT JOIN ligne_repas lr ON lr.journal_id = jr.id "
+        "LEFT JOIN aliment a ON a.id = lr.aliment_id "
+        "WHERE jr.utilisateur_id = :user_id "
+        "ORDER BY jr.date_repas DESC, jr.id, lr.id",
         {"user_id": user_id},
     )
-    return [get_meal_response(j["id"], language) for j in journals]
+
+    meals: dict[int, MealResponse] = {}
+    for row in rows:
+        meal = meals.get(row["meal_id"])
+        if meal is None:
+            meal = MealResponse(
+                id=row["meal_id"],
+                utilisateur_id=row["utilisateur_id"],
+                date_repas=row["date_repas"],
+                type_repas=row["type_repas"],
+                notes=row["notes"],
+                created_at=row["created_at"],
+                total_calories=0.0,
+                items=[],
+            )
+            meals[row["meal_id"]] = meal
+        # ligne_id NULL -> repas sans aliment (LEFT JOIN), on ignore la ligne
+        if row["ligne_id"] is None:
+            continue
+        kcal = round(float(row["quantite_g"]) * float(row["calories_100g"]) / 100.0, 2)
+        meal.items.append(
+            MealLineResponse(
+                id=row["ligne_id"],
+                aliment_id=row["aliment_id"],
+                aliment_nom=row["aliment_nom"],
+                quantite_g=float(row["quantite_g"]),
+                calories_calculees=kcal,
+                calories_100g=float(row["calories_100g"]),
+                categorie=row["categorie"],
+                source_dataset=row["source_dataset"],
+            )
+        )
+        meal.total_calories = round(meal.total_calories + kcal, 2)
+
+    return list(meals.values())
 
 
 @router.get("/meals/{meal_id}", response_model=MealResponse)
