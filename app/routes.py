@@ -224,6 +224,43 @@ class NutritionSummaryResponse(BaseModel):
     profile: NutritionProfile
 
 
+class FitnessProfileResponse(BaseModel):
+    """Tout ce qu'il faut pour recommander un entraînement, sans formulaire."""
+    age: Optional[int] = None
+    weight_kg: Optional[float] = None
+    height_m: Optional[float] = None
+    sex: Optional[str] = None              # male | female | None
+    fat_percentage: Optional[float] = None  # dernière mesure connue
+    resting_bpm: Optional[int] = None       # dernière mesure connue
+    experience_level: int = 1               # 1 débutant · 2 intermédiaire · 3 avancé
+    goal: Optional[str] = None              # weight_loss | muscle_gain | maintenance
+    objective_label: Optional[str] = None   # libellé brut de l'objectif actif (FR)
+
+
+class ExerciseResponse(BaseModel):
+    id: int
+    nom: str
+    type: str
+    niveau: str
+    equipement: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+# Objectif (libellé FR) -> classe du modèle ML (3 classes).
+_OBJ_TO_GOAL = {
+    "perte_de_poids": "weight_loss",
+    "prise_de_masse": "muscle_gain",
+    "maintien_forme": "maintenance",
+    "endurance": "maintenance",
+    "flexibilite": "maintenance",
+    "amelioration_sommeil": "maintenance",
+}
+# Priorité quand plusieurs objectifs actifs (le plus actionnable d'abord).
+_OBJ_PRIORITY = ["perte_de_poids", "prise_de_masse", "endurance",
+                 "maintien_forme", "flexibilite", "amelioration_sommeil"]
+
+
 @router.post("/aliments", response_model=AlimentResponse)
 def create_aliment(payload: AlimentCreate, language: str = Depends(get_language)):
     existing = fetch_one(
@@ -549,6 +586,98 @@ def get_nutrition_summary(
         meals_count=int(totals["meals_count"]),
         profile=profile,
     )
+
+
+@router.get("/users/{user_id}/fitness-profile", response_model=FitnessProfileResponse)
+def get_fitness_profile(user_id: int, language: str = Depends(get_language)):
+    """
+    Agrège tout le nécessaire pour une reco d'entraînement à partir des données
+    existantes : profil, dernières mesures (%gras, bpm repos), objectif actif et
+    niveau d'expérience estimé depuis l'ancienneté du compte (pas d'historique
+    de séances en base). Évite de redemander ces infos via un formulaire.
+    """
+    user = fetch_one(
+        "SELECT taille_cm, sexe, poids_initial_kg, age, date_inscription "
+        "FROM utilisateur WHERE id = :user_id",
+        {"user_id": user_id},
+    )
+    if not user:
+        raise HTTPException(404, get_message("user_not_found", language))
+
+    weight_row = fetch_one(
+        "SELECT poids_kg FROM metrique_quotidienne "
+        "WHERE utilisateur_id = :user_id AND poids_kg IS NOT NULL "
+        "ORDER BY date_mesure DESC LIMIT 1",
+        {"user_id": user_id},
+    )
+    weight = weight_row["poids_kg"] if weight_row and weight_row["poids_kg"] is not None else user["poids_initial_kg"]
+
+    bf_row = fetch_one(
+        "SELECT body_fat_pct FROM metrique_quotidienne "
+        "WHERE utilisateur_id = :user_id AND body_fat_pct IS NOT NULL "
+        "ORDER BY date_mesure DESC LIMIT 1",
+        {"user_id": user_id},
+    )
+    bpm_row = fetch_one(
+        "SELECT bpm_repos FROM metrique_quotidienne "
+        "WHERE utilisateur_id = :user_id AND bpm_repos IS NOT NULL "
+        "ORDER BY date_mesure DESC LIMIT 1",
+        {"user_id": user_id},
+    )
+
+    # Niveau estimé depuis l'ancienneté (faute d'historique de séances).
+    inscription = user["date_inscription"]
+    months = (date.today() - inscription.date()).days / 30.0 if inscription else 0
+    experience_level = 1 if months < 3 else (2 if months < 9 else 3)
+
+    # Objectif actif prioritaire -> classe modèle + libellé brut.
+    objs = fetch_all(
+        "SELECT o.libelle FROM utilisateur_objectif uo "
+        "JOIN objectif o ON o.id = uo.objectif_id "
+        "WHERE uo.utilisateur_id = :user_id AND uo.actif = TRUE",
+        {"user_id": user_id},
+    )
+    actifs = {r["libelle"] for r in objs}
+    chosen = next((g for g in _OBJ_PRIORITY if g in actifs), None)
+
+    return FitnessProfileResponse(
+        age=user["age"],
+        weight_kg=float(weight) if weight is not None else None,
+        height_m=float(user["taille_cm"]) / 100.0 if user["taille_cm"] is not None else None,
+        sex=_SEXE_TO_EN.get(user["sexe"]),
+        fat_percentage=float(bf_row["body_fat_pct"]) if bf_row else None,
+        resting_bpm=int(bpm_row["bpm_repos"]) if bpm_row else None,
+        experience_level=experience_level,
+        goal=_OBJ_TO_GOAL.get(chosen) if chosen else None,
+        objective_label=chosen,
+    )
+
+
+@router.get("/exercices", response_model=list[ExerciseResponse])
+def list_exercices(
+    type: Optional[str] = Query(None, description="cardio | musculation | hiit | yoga | …"),
+    niveau: Optional[str] = Query(None, description="debutant | intermediaire | avance"),
+    equipement: Optional[str] = Query(None, description="filtre LIKE sur l'équipement"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Catalogue d'exercices (source ETL) filtrable par type / niveau / équipement."""
+    clauses, params = [], {"limit": limit}
+    if type:
+        clauses.append("type = :type")
+        params["type"] = type
+    if niveau:
+        clauses.append("niveau = :niveau")
+        params["niveau"] = niveau
+    if equipement:
+        clauses.append("LOWER(equipement) LIKE LOWER(:equipement)")
+        params["equipement"] = f"%{equipement}%"
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = fetch_all(
+        f"SELECT id, nom, type, niveau, equipement, description, image_url "
+        f"FROM exercice{where} ORDER BY niveau, nom LIMIT :limit",
+        params,
+    )
+    return [ExerciseResponse(**dict(r)) for r in rows]
 
 
 @router.post("/users/{user_id}/metrics", response_model=MetricResponse)
