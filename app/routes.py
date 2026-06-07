@@ -400,12 +400,18 @@ def get_user_metrics(user_id: int, language: str = Depends(get_language)):
     if not user:
         raise HTTPException(404, get_message("user_not_found", language))
 
+    # On récupère les 90 mesures les plus récentes, puis on les ré-ordonne
+    # en croissant pour l'affichage chronologique des graphes côté front.
     sql = """
         SELECT date_mesure, poids_kg, heures_sommeil, bpm_repos
-        FROM metrique_quotidienne
-        WHERE utilisateur_id = :user_id
+        FROM (
+            SELECT date_mesure, poids_kg, heures_sommeil, bpm_repos
+            FROM metrique_quotidienne
+            WHERE utilisateur_id = :user_id
+            ORDER BY date_mesure DESC
+            LIMIT 90
+        ) AS recent
         ORDER BY date_mesure ASC
-        LIMIT 90
     """
     rows = fetch_all(sql, {"user_id": user_id})
     return [MetricResponse(**dict(row)) for row in rows]
