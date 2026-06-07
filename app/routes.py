@@ -206,6 +206,24 @@ class ObjectifResponse(BaseModel):
         }
 
 
+class NutritionProfile(BaseModel):
+    age: Optional[int] = None
+    weight_kg: Optional[float] = None
+    height_m: Optional[float] = None
+    sex: Optional[str] = None  # male | female | None (mappé depuis l'enum FR)
+
+
+class NutritionSummaryResponse(BaseModel):
+    date: date
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    fibres_g: float
+    meals_count: int
+    profile: NutritionProfile
+
+
 @router.post("/aliments", response_model=AlimentResponse)
 def create_aliment(payload: AlimentCreate, language: str = Depends(get_language)):
     existing = fetch_one(
@@ -462,6 +480,75 @@ def get_user_metrics(user_id: int, language: str = Depends(get_language)):
     """
     rows = fetch_all(sql, {"user_id": user_id})
     return [MetricResponse(**dict(row)) for row in rows]
+
+
+_SEXE_TO_EN = {"homme": "male", "femme": "female"}
+
+
+@router.get("/users/{user_id}/nutrition-summary", response_model=NutritionSummaryResponse)
+def get_nutrition_summary(
+    user_id: int,
+    date_jour: Optional[date] = Query(None, alias="date", description="Jour analysé (défaut: aujourd'hui)"),
+    language: str = Depends(get_language),
+):
+    """
+    Agrège les apports (calories + macros) des repas journalisés pour une date,
+    et renvoie le profil nécessaire au calcul des cibles (âge, poids, taille, sexe).
+    Le poids retenu est la dernière mesure connue, sinon le poids initial.
+    """
+    user = fetch_one(
+        "SELECT date_naissance, taille_cm, sexe, poids_initial_kg, age "
+        "FROM utilisateur WHERE id = :user_id",
+        {"user_id": user_id},
+    )
+    if not user:
+        raise HTTPException(404, get_message("user_not_found", language))
+
+    target_day = date_jour or date.today()
+
+    totals = fetch_one(
+        """
+        SELECT
+            COALESCE(SUM(lr.quantite_g / 100.0 * a.calories_100g), 0) AS calories,
+            COALESCE(SUM(lr.quantite_g / 100.0 * a.proteines_g),   0) AS protein_g,
+            COALESCE(SUM(lr.quantite_g / 100.0 * a.glucides_g),    0) AS carbs_g,
+            COALESCE(SUM(lr.quantite_g / 100.0 * a.lipides_g),     0) AS fat_g,
+            COALESCE(SUM(lr.quantite_g / 100.0 * a.fibres_g),      0) AS fibres_g,
+            COUNT(DISTINCT jr.id) AS meals_count
+        FROM journal_repas jr
+        JOIN ligne_repas lr ON lr.journal_id = jr.id
+        JOIN aliment a      ON a.id = lr.aliment_id
+        WHERE jr.utilisateur_id = :user_id AND jr.date_repas = :day
+        """,
+        {"user_id": user_id, "day": target_day},
+    )
+
+    # Poids : dernière mesure connue, sinon poids initial du profil.
+    weight_row = fetch_one(
+        "SELECT poids_kg FROM metrique_quotidienne "
+        "WHERE utilisateur_id = :user_id AND poids_kg IS NOT NULL "
+        "ORDER BY date_mesure DESC LIMIT 1",
+        {"user_id": user_id},
+    )
+    weight = weight_row["poids_kg"] if weight_row and weight_row["poids_kg"] is not None else user["poids_initial_kg"]
+
+    profile = NutritionProfile(
+        age=user["age"],
+        weight_kg=float(weight) if weight is not None else None,
+        height_m=float(user["taille_cm"]) / 100.0 if user["taille_cm"] is not None else None,
+        sex=_SEXE_TO_EN.get(user["sexe"]),
+    )
+
+    return NutritionSummaryResponse(
+        date=target_day,
+        calories=round(float(totals["calories"]), 1),
+        protein_g=round(float(totals["protein_g"]), 1),
+        carbs_g=round(float(totals["carbs_g"]), 1),
+        fat_g=round(float(totals["fat_g"]), 1),
+        fibres_g=round(float(totals["fibres_g"]), 1),
+        meals_count=int(totals["meals_count"]),
+        profile=profile,
+    )
 
 
 @router.post("/users/{user_id}/metrics", response_model=MetricResponse)
