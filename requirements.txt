@@ -7,3 +7,4 @@ email-validator
 python-dotenv>=1.0
 pytest
 httpx
+pyctuator

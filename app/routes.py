@@ -3,7 +3,7 @@ from hashlib import sha256
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, EmailStr, model_validator
+from pydantic import BaseModel, Field, EmailStr
 
 from database import execute_write, fetch_all, fetch_one
 from .translations import get_message

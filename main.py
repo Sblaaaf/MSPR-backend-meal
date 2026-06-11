@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pyctuator.pyctuator import Pyctuator
+
 from app.routes import router
 
 app = FastAPI(
@@ -16,3 +18,11 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+Pyctuator(
+    app,
+    "HealthAI Meal Service",
+    app_url="http://localhost:8003",
+    pyctuator_endpoint_url="http://localhost:8003/pyctuator",
+    registration_url=None,
+)

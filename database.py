@@ -1,5 +1,6 @@
 import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -10,7 +11,7 @@ DB_CONFIG = {
 }
 
 
-def get_engine() -> "Engine":
+def get_engine() -> Engine:
     url = (
         f"postgresql+psycopg2://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
         f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
