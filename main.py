@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pyctuator.pyctuator import Pyctuator
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.routes import router
 
@@ -19,10 +19,5 @@ app.add_middleware(
 
 app.include_router(router)
 
-Pyctuator(
-    app,
-    "HealthAI Meal Service",
-    app_url="http://localhost:8003",
-    pyctuator_endpoint_url="http://localhost:8003/pyctuator",
-    registration_url=None,
-)
+# Expose Prometheus metrics on /metrics (scraped by Prometheus, visualised in Grafana).
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
