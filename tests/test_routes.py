@@ -1,6 +1,10 @@
+import sys
 from datetime import date, datetime
+from pathlib import Path
 
 from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app import routes
 from main import app
