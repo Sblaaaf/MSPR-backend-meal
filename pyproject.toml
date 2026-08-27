@@ -4,3 +4,6 @@ ignore = [
     "DTZ005", # Project uses naive local datetimes throughout (DB columns are naive too).
     "DTZ011",
 ]
+
+[tool.coverage.run]
+omit = ["tests/*"]
