@@ -1,13 +1,14 @@
 from datetime import date, datetime
 from hashlib import sha256
-from typing import Optional
+from typing import ClassVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from database import execute_write, fetch_all, fetch_one
-from .translations import get_message
+
 from .lang_dep import get_language
+from .translations import get_message
 
 router = APIRouter()
 
@@ -29,17 +30,17 @@ def hash_password(raw_password: str) -> str:
 class AlimentCreate(BaseModel):
     nom: str = Field(..., min_length=2, example="Riz blanc", description="Nom de l'aliment")
     calories_100g: float = Field(..., ge=0, example=130, description="Calories pour 100g")
-    categorie: Optional[str] = Field(None, example="Féculents", description="Catégorie de l'aliment")
-    proteines_g: Optional[float] = Field(0, ge=0, example=2.7, description="Protéines pour 100g")
-    glucides_g: Optional[float] = Field(0, ge=0, example=28, description="Glucides pour 100g")
-    lipides_g: Optional[float] = Field(0, ge=0, example=0.3, description="Lipides pour 100g")
-    fibres_g: Optional[float] = Field(0, ge=0, example=0.4, description="Fibres pour 100g")
-    sodium_mg: Optional[float] = Field(0, ge=0, example=1, description="Sodium (mg)")
-    sucres_g: Optional[float] = Field(0, ge=0, example=0.1, description="Sucres pour 100g")
-    source_dataset: Optional[str] = Field("manual", example="manual", description="Source des données")
+    categorie: str | None = Field(None, example="Féculents", description="Catégorie de l'aliment")
+    proteines_g: float | None = Field(0, ge=0, example=2.7, description="Protéines pour 100g")
+    glucides_g: float | None = Field(0, ge=0, example=28, description="Glucides pour 100g")
+    lipides_g: float | None = Field(0, ge=0, example=0.3, description="Lipides pour 100g")
+    fibres_g: float | None = Field(0, ge=0, example=0.4, description="Fibres pour 100g")
+    sodium_mg: float | None = Field(0, ge=0, example=1, description="Sodium (mg)")
+    sucres_g: float | None = Field(0, ge=0, example=0.1, description="Sucres pour 100g")
+    source_dataset: str | None = Field("manual", example="manual", description="Source des données")
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "nom": "Riz blanc",
                 "calories_100g": 130,
@@ -59,12 +60,12 @@ class AlimentResponse(BaseModel):
     id: int
     nom: str
     calories_100g: float
-    categorie: Optional[str]
-    proteines_g: Optional[float] = None
-    glucides_g: Optional[float] = None
-    lipides_g: Optional[float] = None
-    fibres_g: Optional[float] = None
-    source_dataset: Optional[str]
+    categorie: str | None
+    proteines_g: float | None = None
+    glucides_g: float | None = None
+    lipides_g: float | None = None
+    fibres_g: float | None = None
+    source_dataset: str | None
     created_at: datetime
 
 
@@ -73,14 +74,14 @@ class UserCreate(BaseModel):
     prenom: str = Field(..., min_length=2, example="Jean", description="Prénom")
     email: EmailStr = Field(..., example="jean.dupont@example.com", description="Adresse email")
     password: str = Field(..., min_length=6, example="secret123", description="Mot de passe")
-    date_naissance: Optional[date] = Field(None, example="1990-01-01", description="Date de naissance")
-    sexe: Optional[str] = Field("non_renseigne", example="homme", description="Sexe")
-    poids_initial_kg: Optional[float] = Field(None, gt=0, example=70, description="Poids initial (kg)")
-    taille_cm: Optional[int] = Field(None, ge=50, le=300, example=175, description="Taille (cm)")
-    abonnement: Optional[str] = Field("freemium", example="freemium", description="Type d'abonnement")
+    date_naissance: date | None = Field(None, example="1990-01-01", description="Date de naissance")
+    sexe: str | None = Field("non_renseigne", example="homme", description="Sexe")
+    poids_initial_kg: float | None = Field(None, gt=0, example=70, description="Poids initial (kg)")
+    taille_cm: int | None = Field(None, ge=50, le=300, example=175, description="Taille (cm)")
+    abonnement: str | None = Field("freemium", example="freemium", description="Type d'abonnement")
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "nom": "Dupont",
                 "prenom": "Jean",
@@ -107,15 +108,15 @@ class UserResponse(BaseModel):
 
 
 class MealLineCreate(BaseModel):
-    aliment_id: Optional[int] = Field(None, example=1, description="ID de l'aliment (optionnel)")
-    aliment_nom: Optional[str] = Field(None, example="Riz blanc", description="Nom de l'aliment si non référencé")
+    aliment_id: int | None = Field(None, example=1, description="ID de l'aliment (optionnel)")
+    aliment_nom: str | None = Field(None, example="Riz blanc", description="Nom de l'aliment si non référencé")
     quantite_g: float = Field(..., gt=0, example=150, description="Quantité en grammes")
-    calories_100g: Optional[float] = Field(None, example=130, description="Calories pour 100g si aliment_nom fourni")
-    categorie: Optional[str] = Field(None, example="Féculents", description="Catégorie si aliment_nom fourni")
-    source_dataset: Optional[str] = Field("manual", example="manual", description="Source des données")
+    calories_100g: float | None = Field(None, example=130, description="Calories pour 100g si aliment_nom fourni")
+    categorie: str | None = Field(None, example="Féculents", description="Catégorie si aliment_nom fourni")
+    source_dataset: str | None = Field("manual", example="manual", description="Source des données")
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "aliment_id": 1,
                 "quantite_g": 150
@@ -125,12 +126,12 @@ class MealLineCreate(BaseModel):
 
 class MealCreate(BaseModel):
     type_repas: str = Field(..., example="dejeuner", description="Type de repas (petit_dejeuner, dejeuner, diner, collation)")
-    date_repas: Optional[date] = Field(default_factory=date.today, example="2024-04-08", description="Date du repas")
-    notes: Optional[str] = Field(None, example="Repas du midi", description="Notes libres")
+    date_repas: date | None = Field(default_factory=date.today, example="2024-04-08", description="Date du repas")
+    notes: str | None = Field(None, example="Repas du midi", description="Notes libres")
     items: list[MealLineCreate] = Field(..., description="Liste des aliments du repas")
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "type_repas": "dejeuner",
                 "date_repas": "2024-04-08",
@@ -149,8 +150,8 @@ class MealLineResponse(BaseModel):
     quantite_g: float
     calories_calculees: float
     calories_100g: float
-    categorie: Optional[str]
-    source_dataset: Optional[str]
+    categorie: str | None
+    source_dataset: str | None
 
 
 class MealResponse(BaseModel):
@@ -158,7 +159,7 @@ class MealResponse(BaseModel):
     utilisateur_id: int
     date_repas: date
     type_repas: str
-    notes: Optional[str]
+    notes: str | None
     created_at: datetime
     total_calories: float
     items: list[MealLineResponse]
@@ -166,19 +167,19 @@ class MealResponse(BaseModel):
 
 class MetricCreate(BaseModel):
     date_mesure: date = Field(..., description="Date de la mesure")
-    poids_kg: Optional[float] = Field(None, description="Poids en kg")
-    heures_sommeil: Optional[float] = Field(None, description="Heures de sommeil")
-    bpm_repos: Optional[int] = Field(None, description="BPM au repos")
+    poids_kg: float | None = Field(None, description="Poids en kg")
+    heures_sommeil: float | None = Field(None, description="Heures de sommeil")
+    bpm_repos: int | None = Field(None, description="BPM au repos")
 
 
 class MetricResponse(BaseModel):
     date_mesure: date = Field(..., description="Date de la mesure")
-    poids_kg: Optional[float] = Field(None, description="Poids en kg")
-    heures_sommeil: Optional[float] = Field(None, description="Heures de sommeil")
-    bpm_repos: Optional[int] = Field(None, description="Battements par minute au repos")
+    poids_kg: float | None = Field(None, description="Poids en kg")
+    heures_sommeil: float | None = Field(None, description="Heures de sommeil")
+    bpm_repos: int | None = Field(None, description="Battements par minute au repos")
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "date_mesure": "2024-05-01",
                 "poids_kg": 78.5,
@@ -195,7 +196,7 @@ class ObjectifResponse(BaseModel):
     actif: bool
 
     class Config:
-        json_schema_extra = {
+        json_schema_extra: ClassVar[dict] = {
             "example": {
                 "id": 1,
                 "libelle": "perte_de_poids",
@@ -207,10 +208,10 @@ class ObjectifResponse(BaseModel):
 
 
 class NutritionProfile(BaseModel):
-    age: Optional[int] = None
-    weight_kg: Optional[float] = None
-    height_m: Optional[float] = None
-    sex: Optional[str] = None  # male | female | None (mappé depuis l'enum FR)
+    age: int | None = None
+    weight_kg: float | None = None
+    height_m: float | None = None
+    sex: str | None = None  # male | female | None (mappé depuis l'enum FR)
 
 
 class NutritionSummaryResponse(BaseModel):
@@ -226,15 +227,15 @@ class NutritionSummaryResponse(BaseModel):
 
 class FitnessProfileResponse(BaseModel):
     """Tout ce qu'il faut pour recommander un entraînement, sans formulaire."""
-    age: Optional[int] = None
-    weight_kg: Optional[float] = None
-    height_m: Optional[float] = None
-    sex: Optional[str] = None              # male | female | None
-    fat_percentage: Optional[float] = None  # dernière mesure connue
-    resting_bpm: Optional[int] = None       # dernière mesure connue
+    age: int | None = None
+    weight_kg: float | None = None
+    height_m: float | None = None
+    sex: str | None = None              # male | female | None
+    fat_percentage: float | None = None  # dernière mesure connue
+    resting_bpm: int | None = None       # dernière mesure connue
     experience_level: int = 1               # 1 débutant · 2 intermédiaire · 3 avancé
-    goal: Optional[str] = None              # weight_loss | muscle_gain | maintenance
-    objective_label: Optional[str] = None   # libellé brut de l'objectif actif (FR)
+    goal: str | None = None              # weight_loss | muscle_gain | maintenance
+    objective_label: str | None = None   # libellé brut de l'objectif actif (FR)
 
 
 class ExerciseResponse(BaseModel):
@@ -242,9 +243,9 @@ class ExerciseResponse(BaseModel):
     nom: str
     type: str
     niveau: str
-    equipement: Optional[str] = None
-    description: Optional[str] = None
-    image_url: Optional[str] = None
+    equipement: str | None = None
+    description: str | None = None
+    image_url: str | None = None
 
 
 # Objectif (libellé FR) -> classe du modèle ML (3 classes).
@@ -281,7 +282,7 @@ def create_aliment(payload: AlimentCreate, language: str = Depends(get_language)
 
 
 @router.get("/aliments", response_model=list[AlimentResponse])
-def list_aliments(query: Optional[str] = Query(None, description="Filtrer par nom d'aliment")):
+def list_aliments(query: str | None = Query(None, description="Filtrer par nom d'aliment")):
     sql = "SELECT id, nom, calories_100g, categorie, proteines_g, glucides_g, lipides_g, fibres_g, source_dataset, created_at FROM aliment"
     params = {}
     if query:
@@ -525,7 +526,7 @@ _SEXE_TO_EN = {"homme": "male", "femme": "female"}
 @router.get("/users/{user_id}/nutrition-summary", response_model=NutritionSummaryResponse)
 def get_nutrition_summary(
     user_id: int,
-    date_jour: Optional[date] = Query(None, alias="date", description="Jour analysé (défaut: aujourd'hui)"),
+    date_jour: date | None = Query(None, alias="date", description="Jour analysé (défaut: aujourd'hui)"),
     language: str = Depends(get_language),
 ):
     """
@@ -655,9 +656,9 @@ def get_fitness_profile(user_id: int, language: str = Depends(get_language)):
 
 @router.get("/exercices", response_model=list[ExerciseResponse])
 def list_exercices(
-    type: Optional[str] = Query(None, description="cardio | musculation | hiit | yoga | …"),
-    niveau: Optional[str] = Query(None, description="debutant | intermediaire | avance"),
-    equipement: Optional[str] = Query(None, description="filtre LIKE sur l'équipement"),
+    type: str | None = Query(None, description="cardio | musculation | hiit | yoga | …"),
+    niveau: str | None = Query(None, description="debutant | intermediaire | avance"),
+    equipement: str | None = Query(None, description="filtre LIKE sur l'équipement"),
     limit: int = Query(20, ge=1, le=100),
 ):
     """Catalogue d'exercices (source ETL) filtrable par type / niveau / équipement."""

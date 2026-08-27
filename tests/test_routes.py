@@ -1,9 +1,9 @@
-from datetime import datetime, date
+from datetime import date, datetime
 
 from fastapi.testclient import TestClient
 
+from app import routes
 from main import app
-import app.routes as routes
 
 
 class DummyResult:
